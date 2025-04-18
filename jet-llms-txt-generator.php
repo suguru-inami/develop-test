@@ -3,7 +3,7 @@
  * Plugin Name:       Jet LLMs.txt Generator (Minimal)
  * Plugin URI:        https://example.com/jet-llms-txt-generator (仮)
  * Description:       Generates llms.txt related files for LLMs. (Minimal version for rebuilding)
- * Version:           0.0.2  // バージョンを少し上げました
+ * Version:           0.0.2
  * Requires at least: 5.2
  * Requires PHP:      7.4
  * Author:            Your Name or Company (仮)
@@ -14,7 +14,20 @@
  * Domain Path:       /languages
  */
 
-// セキュリティ: PHPファイルへの直接アクセスを禁止します。
+// =========================================================================
+// 定数定義
+// =========================================================================
+// このプラグインのバージョン。ヘッダーコメントの Version と合わせるのが一般的。
+define( 'JET_LLMS_TXT_VERSION', '0.0.2' );
+// プラグインのディレクトリパス（サーバー上の絶対パス）
+define( 'JET_LLMS_TXT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+// プラグインのディレクトリURL
+define( 'JET_LLMS_TXT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+
+// =========================================================================
+// セキュリティ
+// =========================================================================
+// PHPファイルへの直接アクセスを禁止します。
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly
 }
@@ -45,7 +58,7 @@ add_action( 'admin_menu', 'jet_llms_txt_admin_menu' );
 
 /**
  * 設定ページのHTMLコンテンツを出力する関数
- * (Settings APIを使うように修正)
+ * (手動生成ボタンと処理を追加)
  */
 function jet_llms_txt_settings_page_html() {
     // 権限チェック
@@ -53,26 +66,61 @@ function jet_llms_txt_settings_page_html() {
         return;
     }
 
-    // 設定が保存された時に表示されるメッセージ (オプション)
+    // --- 手動生成ボタンが押された場合の処理 ---
+    $generation_message = ''; // 生成結果メッセージ用変数
+    if ( isset( $_POST['action'] ) && $_POST['action'] === 'generate_llms_txt' ) {
+        // Nonce検証 (セキュリティ対策)
+        if ( isset( $_POST['_wpnonce'] ) && wp_verify_nonce( $_POST['_wpnonce'], 'jet_llms_manual_generate_nonce' ) ) {
+            // ファイル生成関数を呼び出す
+            $result = jet_llms_txt_generate_llms_txt_file();
+            if ( $result === true ) {
+                $generation_message = '<div id="setting-error-settings_updated" class="notice notice-success settings-error is-dismissible"><p><strong>llms.txt ファイルを生成しました。</strong></p></div>';
+            } else {
+                // エラーメッセージがあれば表示
+                $error_msg = is_string( $result ) ? $result : 'llms.txt ファイルの生成に失敗しました。';
+                $generation_message = '<div id="setting-error-settings_error" class="notice notice-error settings-error is-dismissible"><p><strong>' . esc_html( $error_msg ) . '</strong></p></div>';
+            }
+        } else {
+            // Nonce検証失敗
+            $generation_message = '<div id="setting-error-settings_error" class="notice notice-error settings-error is-dismissible"><p><strong>セキュリティチェックに失敗しました。ページを再読み込みしてもう一度お試しください。</strong></p></div>';
+        }
+    }
+    // --- 手動生成処理ここまで ---
+
+
+    // 設定保存時のメッセージ表示
     if ( isset( $_GET['settings-updated'] ) ) {
         add_settings_error( 'jet_llms_txt_messages', 'jet_llms_txt_message', '設定を保存しました。', 'updated' );
     }
-    // エラーメッセージ表示
-    settings_errors( 'jet_llms_txt_messages' );
+
     ?>
     <div class="wrap">
         <h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
 
+        <?php
+        // 生成結果メッセージがあれば表示
+        echo $generation_message;
+        // 設定保存時のメッセージ表示
+        settings_errors( 'jet_llms_txt_messages' );
+        ?>
+
+        <hr>
+        <h2>手動生成</h2>
+        <p>現在の設定に基づいて llms.txt ファイルを即時に生成・更新します。</p>
+        <form method="post" action="">
+            <?php // アクションとNonceフィールドを追加 ?>
+            <input type="hidden" name="action" value="generate_llms_txt">
+            <?php wp_nonce_field( 'jet_llms_manual_generate_nonce' ); ?>
+            <?php submit_button( 'llms.txt を今すぐ生成', 'primary', 'submit_generate', false ); // ボタンのテキスト、タイプ、name、wrapしない ?>
+         </form>
+         <hr>
+
+
+        <h2>設定</h2>
         <form action="options.php" method="post">
             <?php
-            // Settings API のための隠しフィールド（nonceなど）を出力
             settings_fields( 'jet_llms_txt_options_group' );
-
-            // 登録した設定セクション（と、それに属するフィールド）を出力
-            // 'jet-llms-txt-settings' は add_settings_section の第4引数で指定したページスラッグ
             do_settings_sections( 'jet-llms-txt-settings' );
-
-            // 保存ボタンを出力
             submit_button( '設定を保存' );
             ?>
         </form>
@@ -152,7 +200,7 @@ function jet_llms_txt_settings_init() {
         [ 'label_for' => 'jet_llms_manual_urls' ] // label for 属性
     );
 
-    // --- .md ページ生成設定セクション ---
+     // --- .md ページ生成設定セクション ---
     add_settings_section(
         'jet_llms_txt_section_md',         // セクションID
         '.md ページ生成設定',              // セクションタイトル
@@ -167,7 +215,6 @@ function jet_llms_txt_settings_init() {
         'jet_llms_txt_field_enable_md_cb', // HTML出力コールバック
         'jet-llms-txt-settings',            // 表示ページスラッグ
         'jet_llms_txt_section_md'       // 所属セクションID
-        // label_for はチェックボックス単体なので省略可
     );
 
     // 含めるメタ情報フィールド
@@ -180,8 +227,7 @@ function jet_llms_txt_settings_init() {
         [ 'label_for' => 'jet_llms_meta_in_md' ] // fieldset に対応させる
     );
 
-// --- ここに他の設定フィールドも同様に追加 ---
-
+    // --- ここに他の設定フィールドも同様に追加していきます ---
 }
 // 'admin_init' アクションフックで上記の初期化関数を呼び出す
 add_action( 'admin_init', 'jet_llms_txt_settings_init' );
@@ -273,6 +319,60 @@ function jet_llms_txt_field_manual_urls_cb( $args ) {
     <?php
 }
 
+/**
+ * '.md ページ生成設定' セクションのコールバック関数
+ */
+function jet_llms_txt_section_md_cb( $args ) {
+    ?>
+    <p id="<?php echo esc_attr( $args['id'] ); ?>">各投稿に対応する .md ファイルの自動生成に関する設定を行います。</p>
+    <?php
+}
+
+/**
+ * '.md生成の有効化' フィールドのコールバック関数 (チェックボックス)
+ */
+function jet_llms_txt_field_enable_md_cb( $args ) {
+    $options = get_option( 'jet_llms_txt_options' );
+    $checked = isset( $options['enable_md_generation'] ) && $options['enable_md_generation'] === 'yes';
+    ?>
+    <label>
+        <input type="checkbox" name="jet_llms_txt_options[enable_md_generation]" value="yes" <?php checked( $checked, true ); ?> >
+        投稿・固定ページの保存時に .md ファイルを自動生成する
+    </label>
+    <p class="description">有効にすると、対象投稿タイプのコンテンツからMarkdownファイルを生成し、サーバー内に保存します。(保存先は別途定義)</p>
+     <?php
+}
+
+/**
+ * '含めるメタ情報' フィールドのコールバック関数 (チェックボックス群)
+ */
+function jet_llms_txt_field_meta_in_md_cb( $args ) {
+    $options = get_option( 'jet_llms_txt_options' );
+    $selected_meta = isset( $options['meta_in_md'] ) ? (array) $options['meta_in_md'] : [];
+    $available_meta = [
+        'title'        => 'タイトル (Title)',
+        'publish_date' => '公開日 (Date)',
+        'author'       => '著者 (Author)',
+    ];
+
+    $html = '<fieldset id="jet_llms_meta_in_md">';
+    foreach ( $available_meta as $key => $label ) {
+         $checkbox_id = 'meta_' . esc_attr( $key );
+         $html .= sprintf(
+             '<label for="%s" style="margin-right: 15px;"><input type="checkbox" id="%s" name="jet_llms_txt_options[meta_in_md][]" value="%s" %s> %s</label><br>',
+             $checkbox_id,
+             $checkbox_id,
+             esc_attr( $key ),
+             checked( in_array( $key, $selected_meta, true ), true, false ),
+             esc_html( $label )
+         );
+    }
+     $html .= '</fieldset>';
+     $html .= '<p class="description">生成される .md ファイルの先頭に含めるメタ情報（YAML Front Matter形式を想定）を選択してください。</p>';
+
+    echo $html;
+}
+
 
 // =========================================================================
 // 設定値のサニタイズ（無害化）
@@ -309,35 +409,29 @@ function jet_llms_txt_options_sanitize( $input ) {
 
     // manual_urls フィールドの値をサニタイズ
     if ( isset( $input['manual_urls'] ) ) {
-        // 改行で区切られたURLリストとして、各行をサニタイズする例 (より厳密には filter_var などでURL形式を検証)
          $lines = explode( "\n", $input['manual_urls'] );
          $sanitized_urls = [];
          foreach( $lines as $line ) {
              $trimmed_line = trim( $line );
              if ( ! empty( $trimmed_line ) ) {
-                 // esc_url_raw は DB 保存に適した形式で URL をエスケープ/サニタイズ
                  $sanitized_urls[] = esc_url_raw( $trimmed_line );
              }
          }
-         // サニタイズしたURLを改行で結合して保存
          $sanitized_input['manual_urls'] = implode( "\n", $sanitized_urls );
     } else {
         $sanitized_input['manual_urls'] = '';
     }
 
-        // enable_md_generation フィールドの値をサニタイズ
-    // チェックされていれば 'yes' を、そうでなければ空文字を保存
+    // enable_md_generation フィールドの値をサニタイズ
     if ( isset( $input['enable_md_generation'] ) && $input['enable_md_generation'] === 'yes' ) {
         $sanitized_input['enable_md_generation'] = 'yes';
     } else {
-         $sanitized_input['enable_md_generation'] = ''; // または 'no' でも良い
+         $sanitized_input['enable_md_generation'] = '';
     }
 
     // meta_in_md フィールドの値をサニタイズ
     if ( isset( $input['meta_in_md'] ) ) {
-        // 配列であることを確認し、各要素を sanitize_key で無害化
-        // (許可するキーは 'title', 'publish_date', 'author' など想定)
-        $allowed_meta_keys = ['title', 'publish_date', 'author']; // 許可するキーのリストを定義
+        $allowed_meta_keys = ['title', 'publish_date', 'author'];
         $sanitized_meta = [];
         if ( is_array( $input['meta_in_md'] ) ) {
             foreach( $input['meta_in_md'] as $meta_key ) {
@@ -348,78 +442,104 @@ function jet_llms_txt_options_sanitize( $input ) {
             }
         }
          $sanitized_input['meta_in_md'] = $sanitized_meta;
-
     } else {
-        // チェックが一つも入っていなかった場合、空の配列を保存
         $sanitized_input['meta_in_md'] = [];
     }
-
-// --- ここに他の設定値のサニタイズ処理を追加 ---
-
-// return $sanitized_input; は関数の最後に置く
 
     // --- ここに他の設定値のサニタイズ処理を追加していきます ---
 
     return $sanitized_input; // サニタイズ後の配列を返す
 }
 
-// --- ここから下に、実際のファイル生成などの機能を追加していきます ---
-/**
- * '.md ページ生成設定' セクションのコールバック関数
- */
-function jet_llms_txt_section_md_cb( $args ) {
-    ?>
-    <p id="<?php echo esc_attr( $args['id'] ); ?>">各投稿に対応する .md ファイルの自動生成に関する設定を行います。</p>
-    <?php
-}
+
+// =========================================================================
+// llms.txt ファイル生成処理
+// =========================================================================
 
 /**
- * '.md生成の有効化' フィールドのコールバック関数 (チェックボックス)
+ * llms.txt ファイルを生成・更新する関数
+ *
+ * @return bool|string 成功時は true、失敗時はエラーメッセージ文字列
  */
-function jet_llms_txt_field_enable_md_cb( $args ) {
-    $options = get_option( 'jet_llms_txt_options' );
-    // 値が 'yes' であればチェックを入れる
-    $checked = isset( $options['enable_md_generation'] ) && $options['enable_md_generation'] === 'yes';
-    ?>
-    <label>
-        <input type="checkbox" name="jet_llms_txt_options[enable_md_generation]" value="yes" <?php checked( $checked, true ); ?> >
-        投稿・固定ページの保存時に .md ファイルを自動生成する
-    </label>
-    <p class="description">有効にすると、対象投稿タイプのコンテンツからMarkdownファイルを生成し、サーバー内に保存します。(保存先は別途定義)</p>
-     <?php
-}
+function jet_llms_txt_generate_llms_txt_file() {
+    $options = get_option( 'jet_llms_txt_options', [] );
+    $llms_content = ''; // ファイルの内容をここに組み立てる
 
-/**
- * '含めるメタ情報' フィールドのコールバック関数 (チェックボックス群)
- */
-function jet_llms_txt_field_meta_in_md_cb( $args ) {
-    $options = get_option( 'jet_llms_txt_options' );
-    $selected_meta = isset( $options['meta_in_md'] ) ? (array) $options['meta_in_md'] : [];
-    // 選択可能なメタ情報のリスト (キー => 表示名)
-    $available_meta = [
-        'title'        => 'タイトル (Title)',
-        'publish_date' => '公開日 (Date)',
-        'author'       => '著者 (Author)',
-        // 必要に応じて他のメタキーを追加 (例: 'modified_date' => '更新日')
-        // カスタムフィールドもここに追加可能だが、取得方法は別途考慮が必要
-    ];
+    // --- 1. ルール部分の生成 ---
+    $llms_content .= "# LLMs.txt Generated by Jet LLMs.txt Generator v" . JET_LLMS_TXT_VERSION . "\n";
+    $llms_content .= "# Generated at: " . current_time('mysql') . "\n\n";
 
-    $html = '<fieldset id="jet_llms_meta_in_md">';
-    foreach ( $available_meta as $key => $label ) {
-         $checkbox_id = 'meta_' . esc_attr( $key );
-         $html .= sprintf(
-             '<label for="%s" style="margin-right: 15px;"><input type="checkbox" id="%s" name="jet_llms_txt_options[meta_in_md][]" value="%s" %s> %s</label><br>',
-             $checkbox_id,
-             $checkbox_id,
-             esc_attr( $key ), // value にメタ情報のキーを入れる
-             checked( in_array( $key, $selected_meta, true ), true, false ), // 保存値にあればチェック
-             esc_html( $label ) // 表示名
-         );
+    // ユーザーエージェントルール
+    if ( ! empty( $options['user_agent_rules'] ) ) {
+        $llms_content .= "## User Agent Rules\n";
+        $llms_content .= trim( $options['user_agent_rules'] ) . "\n\n";
     }
-     $html .= '</fieldset>';
-     $html .= '<p class="description">生成される .md ファイルの先頭に含めるメタ情報（YAML Front Matter形式を想定）を選択してください。</p>';
 
-    echo $html;
+    // カスタムルール
+    if ( ! empty( $options['custom_rules'] ) ) {
+        $llms_content .= "## Custom Rules\n";
+        $llms_content .= trim( $options['custom_rules'] ) . "\n\n";
+    }
+
+    // --- 2. コンテンツリスト部分の生成 ---
+    $llms_content .= "## Content Index\n";
+
+    // 対象投稿タイプの取得
+    $post_types = ! empty( $options['post_types'] ) ? $options['post_types'] : [];
+
+    if ( ! empty( $post_types ) ) {
+        $args = [
+            'post_type' => $post_types,
+            'post_status' => 'publish',
+            'posts_per_page' => -1,
+            'orderby' => 'date',
+            'order' => 'DESC',
+        ];
+        $query = new WP_Query( $args );
+
+        if ( $query->have_posts() ) {
+            while ( $query->have_posts() ) {
+                $query->the_post();
+                global $post;
+                $link_url = get_permalink( $post->ID );
+                $post_title = get_the_title( $post->ID );
+                $llms_content .= "- [" . esc_html( $post_title ) . "](" . esc_url( $link_url ) . ")\n";
+            }
+            wp_reset_postdata();
+        } else {
+            $llms_content .= "No posts found for the selected post types.\n";
+        }
+    } else {
+        $llms_content .= "No post types selected in settings.\n";
+    }
+    $llms_content .= "\n";
+
+    // 手動追加URL
+    if ( ! empty( $options['manual_urls'] ) ) {
+        $llms_content .= "## Manual URLs\n";
+        $manual_urls = explode( "\n", trim( $options['manual_urls'] ) );
+        foreach ( $manual_urls as $url_line ) {
+            $url_line = trim( $url_line );
+            if ( ! empty( $url_line ) ) {
+                $llms_content .= "- [" . esc_url( $url_line ) . "](" . esc_url( $url_line ) . ")\n";
+            }
+        }
+        $llms_content .= "\n";
+    }
+
+    // --- 3. ファイルへの書き込み ---
+    $home_path = get_home_path();
+    $llms_txt_path = $home_path . 'llms.txt';
+    $write_result = @file_put_contents( $llms_txt_path, $llms_content );
+
+    if ( $write_result === false ) {
+         error_log( '[Jet LLMs.txt Generator] Failed to write llms.txt file. Check file permissions for ' . $llms_txt_path );
+        return 'llms.txt ファイルの書き込みに失敗しました。サーバーのルートディレクトリ (' . esc_html($home_path) . ') に書き込み権限があるか確認してください。';
+    }
+
+    return true; // 成功
 }
 
-?> 
+// --- ここに他のプラグイン機能関数を追加 ---
+
+?>
