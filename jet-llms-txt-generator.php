@@ -62,4 +62,36 @@ if ( ! defined( 'ABSPATH' ) ) {
 //     echo '<div class="notice notice-success is-dismissible"><p>Jet LLMs.txt Generator (Minimal) is active!</p></div>';
 // });
 
+/**
+ * 管理画面にプラグイン設定メニューを追加する関数
+ */
+function jet_llms_txt_admin_menu() {
+    add_options_page(
+        'LLMs.txt Generator Settings', // ページの<title>タグに出力されるテキスト
+        'LLMs.txt Generator',        // メニューに表示されるテキスト
+        'manage_options',            // このメニューを操作するために必要な権限
+        'jet-llms-txt-settings',     // このメニューページのスラッグ（URLの一部になるユニークな名前）
+        'jet_llms_txt_settings_page_html' // メニューページの内容を出力する関数名
+    );
+}
+// 'admin_menu' アクションフックに関数を登録
+add_action( 'admin_menu', 'jet_llms_txt_admin_menu' );
+
+/**
+ * 設定ページのHTMLコンテンツを出力する関数
+ * （今はまだ空のラッパーだけ作成）
+ */
+function jet_llms_txt_settings_page_html() {
+    // 権限チェック (定型句)
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    ?>
+    <div class="wrap">
+        <h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
+        <p>ここにプラグインの設定項目が表示されます。</p>
+        </div>
+    <?php
+}
+         
 ?>
